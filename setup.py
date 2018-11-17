@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pyrandr',
-    version='0.1',
+    version='0.1.1',
     description='A small python xrandr application. It is written as a wrapper around xrandr command line tool.',
     long_description=open('README.md').read(),
     author='Cihangir Akturk',

@@ -130,7 +130,7 @@ class Screen(object):
     def rotate(self, direction):
         """Rotate the output in the specified direction
 
-        :direction: one of (normal, left, right, inverted)
+        :direction: RotateDirection.<name> (one of Normal, Left, Right, Inverted)
 
         """
         self.set.rotation = direction
@@ -139,8 +139,8 @@ class Screen(object):
         """Position the output relative to the position
         of another output.
 
-        :relation: TODO
-        :relative_to: output name (LVDS1, HDMI eg.)
+        :relation: PostitonType.<name> (one of Above, Below, LeftOf, RightOf, SameAs)
+        :relative_to: str output name (LVDS1, HDMI eg.)
         """
         self.set.position = (relation, relative_to)
 
@@ -186,11 +186,18 @@ class Screen(object):
 
         if self.is_enabled() and not self.set.is_enabled:
             if has_changed:
-                raise Exception('--off: this option cannot be combined with other options')
+                raise ValueError('--off: this option cannot be combined with other options')
             cmd.append('--off')
             has_changed = True
 
         return cmd
+
+    def apply_default_setting(self):
+        """
+        Apply default setting (reset)
+        """
+        exec_cmd(['xrandr', '--output', self.name, '--auto'])
+        self.set.reset()
 
     def apply_settings(self):
         exec_cmd(self.build_cmd())
@@ -249,7 +256,6 @@ def exec_cmd(cmd):
         s = s.decode()
     except AttributeError:
         pass
-
     return s.split('\n')
 
 
