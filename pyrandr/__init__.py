@@ -17,5 +17,3 @@
 
 from pyrandr.randr import connected_screens, enabled_screens
 from pyrandr.randr import RotateDirection, PostitonType
-from pyrandr.randr import str_to_rot, str_to_pos
-from pyrandr.randr import rot_to_str, pos_to_str

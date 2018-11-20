@@ -31,18 +31,16 @@ class Mode(object):
         self.current = current
         self.preferred = preferred
 
-    def resolution(self):
+    def resolution(self, string=False):
+        if string:
+            return '{0}x{1}'.format(self.width, self.height)
         return self.width, self.height
 
     def __str__(self):
-        return '<{0}x{1}, {2}, curr: {3}, pref: {4}>'.format(self.width,
-                                                             self.height,
-                                                             self.freq,
-                                                             self.current,
-                                                             self.preferred)
-
-    def cmd_str(self):
-        return '{0}x{1}'.format(self.width, self.height)
+        return '<{0}, {1}, curr: {2}, pref: {3}>'.format(self.resolution(True),
+                                                         self.freq,
+                                                         self.current,
+                                                         self.preferred)
 
     __repr__ = __str__
 
@@ -59,13 +57,13 @@ class ScreenSettings(object):
         self.position = None
         self.dirty = None
         self.is_connected = True
-        self.change_table = {k: False for k in ("resolution",
-                                                "is_primary",
-                                                "is_enabled",
-                                                "rotation",
-                                                "position",
-                                                "dirty",
-                                                "is_connected")}
+        self.change_table = {"resolution": False,
+                             "is_primary": False,
+                             "is_enabled": False,
+                             "rotation": False,
+                             "position": False,
+                             "dirty": False,
+                             "is_connected": False}
 
 
 class Screen(object):
@@ -74,22 +72,17 @@ class Screen(object):
         self.__name = name
         self.__set = ScreenSettings()
 
-        # dirty hack
-        if modes:
-            current = [item for item in modes if item.current]
-            if current:
-                self.curr_mode = current[0]
-            else:
-                self.curr_mode = None
-        else:
-            self.curr_mode = None
-        self.__set.rotation = rot
-
         # list of Modes (width, height)
         self.supported_modes = modes
 
+        self.curr_mode = [item for item in modes if item.current]
+        if self.curr_mode:
+            self.curr_mode = self.curr_mode[0]
+
+        self.__set.rotation = rot
+
         self.__set.is_primary = primary
-        self.__set.is_enabled = bool([mode for mode in self.supported_modes if mode.current])
+        self.__set.is_enabled = bool(self.curr_mode)
         self.__set.is_connected = bool(self.supported_modes)
         if self.curr_mode:
             self.__set.resolution = self.curr_mode.resolution()
@@ -97,6 +90,10 @@ class Screen(object):
     @property
     def name(self):
         return self.__name
+
+    @property
+    def is_changed(self):
+        return self.__set.change_table
 
     @property
     def is_connected(self):
@@ -137,7 +134,7 @@ class Screen(object):
         return self.__set.resolution
 
     @resolution.setter
-    def resolution(self, newres):
+    def resolution(self, newres, custom=False):
         """Sets the resolution of this screen to the supplied
            @newres parameter.
 
@@ -147,7 +144,8 @@ class Screen(object):
         if not self.is_enabled and not self.__set.change_table["is_enabled"]:
             raise ValueError('The Screen is off')
         if newres != self.__set.resolution:
-            self.check_resolution(newres)
+            if not custom:
+                self.check_resolution(newres)
             self.__set.resolution = newres
             self.__set.change_table["resolution"] = True
 
@@ -182,13 +180,15 @@ class Screen(object):
             self.__set.position = args
             self.__set.change_table["position"] = True
 
-    def available_resolutions(self):
+    def available_resolutions(self, string=False):
         """
 
         :param string:
         :return:
         """
-        return [(r.width, r.height) for r in self.supported_modes]
+        if string:
+            return [r.resolution(True) for r in self.supported_modes]
+        return [r.resolution() for r in self.supported_modes]
 
     def check_resolution(self, newres):
         """
@@ -200,69 +200,66 @@ class Screen(object):
             raise ValueError('Requested resolution is not supported', newres)
 
     def build_cmd(self):
+        # if has changed display settings
         if True in self.__set.change_table.values():
             if not self.name:
                 raise ValueError('Cannot apply settings without screen name',
                                  self.name)
-            # check resolution
-            if self.__set.change_table["resolution"]:
-                self.check_resolution(self.__set.resolution)
 
             cmd = ['xrandr', '--output', self.name]
 
-            has_changed = False
+            turn_off = False
 
-            # set resolution
-            if self.is_enabled and self.__set.change_table["resolution"]:
-                cmd.extend(['--mode', '{0}x{1}'.format(*self.__set.resolution)])
-                has_changed = True
-            else:
-                cmd.append('--auto')
-
-            # Check if this screen is already primary
-            if self.__set.change_table["is_primary"]:
-                cmd.append('--primary')
-                has_changed = True
-
-            if self.__set.change_table["rotation"]:
-                rot = rot_to_str(self.__set.rotation)
-                if not rot:
-                    raise ValueError('Invalid rotation value',
-                                     rot, self.__set.rotation)
-                cmd.extend(['--rotate', rot])
-                has_changed = True
-
-            if self.__set.change_table["position"]:
-                rel, rel_to = self.__set.position
-                rel = pos_to_str(rel)
-                cmd.extend([rel, rel_to])
-                has_changed = True
-
+            # if display be disabled
             if self.__set.change_table['is_enabled'] and not self.is_enabled:
-                if has_changed:
-                    raise ValueError('--off: this option cannot be combined with other options')
+                turn_off = True
                 cmd.append('--off')
 
-            has_changed = False
+            # add another settings if display not be disabled
+            if not turn_off:
+                # set resolution
+                if self.is_enabled and self.__set.change_table["resolution"]:
+                    cmd.extend(['--mode', '{0}x{1}'.format(*self.__set.resolution)])
+                else:
+                    cmd.append('--auto')
 
+                if self.__set.change_table["is_primary"]:
+                    cmd.append('--primary')
+
+                if self.__set.change_table["rotation"]:
+                    rot = RotateDirection.by_direction[self.__set.rotation]
+                    if not rot:
+                        raise ValueError('Invalid rotation value',
+                                         rot, self.__set.rotation)
+                    cmd.extend(['--rotate', rot])
+
+                if self.__set.change_table["position"]:
+                    rel, rel_to = self.__set.position
+                    rel = PostitonType.by_position[rel]
+                    cmd.extend([rel, rel_to])
+
+            # if self.__set.change_table['is_enabled'] and not self.is_enabled:
+            #     if has_changed:
+            #         raise ValueError('--off: this option cannot be combined with other options')
+            #     cmd.append('--off')
             return cmd
         else:
+            # return False if has no change
             return False
 
-    def apply_default_setting(self):
+    def apply_settings(self, default=False):
         """
-        Apply default setting (reset)
+        Apply setting. If default is True -> apply default best quality setting
+        :param default: bool
         """
-        exec_cmd(['xrandr', '--output', self.name, '--auto'])
-        #self.__set.reset()
-
-    def apply_settings(self):
-        if True in self.__set.change_table.values():
-            exec_cmd(self.build_cmd())
-            # reset change table
-            for key in self.__set.change_table:
-                self.__set.change_table[key] = False
-        #self.__set.reset()
+        if default:
+            exec_cmd(['xrandr', '--output', self.name, '--auto'])
+        else:
+            if True in self.__set.change_table.values():
+                exec_cmd(self.build_cmd())
+        # reset change table
+        for key in self.__set.change_table:
+            self.__set.change_table[key] = False
 
     def __str__(self):
         return '<{0}, primary: {1}, modes: {2}, conn: {3}, rot: {4}, '\
@@ -270,44 +267,42 @@ class Screen(object):
                                       self.is_primary,
                                       len(self.supported_modes),
                                       self.is_connected,
-                                      rot_to_str(self.rotation),
+                                      RotateDirection.by_direction[self.rotation],
                                       self.is_enabled)
 
     __repr__ = __str__
 
 
 class RotateDirection(object):
-    Normal, Left, Inverted, Right = range(1, 5)
-    valtoname = {Normal: 'normal', Left: 'left',
-                 Inverted: 'inverted', Right: 'right'}
-    nametoval = dict((v, k) for k, v in iteritems(valtoname))
+    """
+    Class with rotations
+    """
+    Rotation = namedtuple('Rotation', ['direction', 'name'])
 
+    Normal = Rotation(0, 'normal')
+    Left = Rotation(90, 'left')
+    Inverted = Rotation(180, 'inverted')
+    Right = Rotation(270, 'right')
 
-def rot_to_str(rot):
-    if rot in RotateDirection.valtoname:
-        return RotateDirection.valtoname[rot]
-    return None
+    rotations = (Normal, Left, Inverted, Right)
 
-
-def str_to_rot(s):
-    if s in RotateDirection.nametoval:
-        return RotateDirection.nametoval[s]
-    return RotateDirection.Normal
+    by_name = {k.name: k.direction for k in rotations}
+    by_direction = {v: k for k, v in by_name.items()}
 
 
 class PostitonType(object):
-    LeftOf, RightOf, Above, Below, SameAs = range(1, 6)
-    valtoname = {LeftOf: '--left-of', RightOf: '--right-of',
-                 Above: '--above', Below: '--below', SameAs: '--same-as'}
-    nametoval = dict((v, k) for k, v in iteritems(valtoname))
+    Position = namedtuple('Position', ['name', 'value'])
 
+    LeftOf = Position('--left-of', 1)
+    RightOf = Position('--right-of', 2)
+    Above = Position('--above', 3)
+    Below = Position('--below', 4)
+    SameAs = Position('--same-as', 5)
 
-def pos_to_str(n):
-    return PostitonType.valtoname[n]
+    positions = (LeftOf, RightOf, Above, Below, SameAs)
 
-
-def str_to_pos(s):
-    return PostitonType.nametoval[s]
+    by_name = {k.name: k.value for k in positions}
+    by_position = {v: k for k, v in by_name.items()}
 
 
 def exec_cmd(cmd):
@@ -328,7 +323,11 @@ def create_screen(name_str, modes):
     if modes:
         fr = name_str.split(' ')
         if len(fr) > 2:
-            rot = str_to_rot(name_str.split(' ')[3])
+            name = name_str.split(' ')[3]
+            if name in RotateDirection.by_name:
+                rot = name
+            else:
+                rot = RotateDirection.Normal.direction
 
     return Screen(sc_name, 'primary' in name_str, rot, modes)
 
