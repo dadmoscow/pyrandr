@@ -52,7 +52,7 @@ class ScreenSettings(object):
     def __init__(self):
         super(ScreenSettings, self).__init__()
 
-        self.resolution = None
+        self.resolution = (0, 0)
         self.is_primary = False
         self.is_enabled = True
         self.rotation = None
@@ -66,6 +66,7 @@ class ScreenSettings(object):
                                                 "position",
                                                 "dirty",
                                                 "is_connected")}
+
 
 class Screen(object):
     def __init__(self, name, primary, rot, modes):
@@ -92,8 +93,6 @@ class Screen(object):
         self.__set.is_connected = bool(self.supported_modes)
         if self.curr_mode:
             self.__set.resolution = self.curr_mode.resolution()
-        else:
-            self.__set.resolution = None
 
     @property
     def name(self):
@@ -145,29 +144,12 @@ class Screen(object):
         :newres: must be a tuple in the form (width, height)
 
         """
-        if not self.is_enabled:
+        if not self.is_enabled and not self.__set.change_table["is_enabled"]:
             raise ValueError('The Screen is off')
         if newres != self.__set.resolution:
             self.check_resolution(newres)
             self.__set.resolution = newres
             self.__set.change_table["resolution"] = True
-
-    def available_resolutions(self):
-        """
-
-        :param string:
-        :return:
-        """
-        return [(r.width, r.height) for r in self.supported_modes]
-
-    def check_resolution(self, newres):
-        """
-
-        :param newres:
-        :return:
-        """
-        if newres not in self.available_resolutions():
-            raise ValueError('Requested resolution is not supported', newres)
 
     @property
     def rotation(self):
@@ -199,6 +181,23 @@ class Screen(object):
         if args != self.__set.position:
             self.__set.position = args
             self.__set.change_table["position"] = True
+
+    def available_resolutions(self):
+        """
+
+        :param string:
+        :return:
+        """
+        return [(r.width, r.height) for r in self.supported_modes]
+
+    def check_resolution(self, newres):
+        """
+
+        :param newres:
+        :return:
+        """
+        if newres not in self.available_resolutions():
+            raise ValueError('Requested resolution is not supported', newres)
 
     def build_cmd(self):
         if True in self.__set.change_table.values():
