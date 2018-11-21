@@ -223,7 +223,7 @@ class Screen(object):
                 else:
                     cmd.append('--auto')
 
-                if self.__set.change_table["is_primary"]:
+                if self.__set.change_table["is_primary"] and self.is_primary:
                     cmd.append('--primary')
 
                 if self.__set.change_table["rotation"]:
